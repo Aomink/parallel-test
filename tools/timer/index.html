@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>タイマー</title>
+<style>
+:root{--bg:#f5f6f8;--fg:#1c1e21;--card:#fff;--accent:#2563eb;--stop:#d97706;--reset:#6b7280;--alert:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#121316;--fg:#eceef1;--card:#1d1f24}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;min-height:100vh;display:flex;justify-content:center}
+main{width:100%;max-width:480px;padding:24px 16px;display:flex;flex-direction:column;gap:20px}
+h1{font-size:1.2rem;margin:0;text-align:center}
+.card{background:var(--card);border-radius:16px;padding:20px 16px;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+#display{font-size:clamp(4rem,24vw,7rem);font-variant-numeric:tabular-nums;font-weight:700;text-align:center;line-height:1.1}
+#msg{min-height:2em;text-align:center;font-size:1.5rem;font-weight:700;color:var(--alert);margin-top:8px}
+.done #display{color:var(--alert)}
+.inputs{display:flex;gap:12px}
+.inputs label{flex:1;display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+input{width:100%;min-height:56px;font-size:1.6rem;text-align:center;border:2px solid #9ca3af;border-radius:12px;background:var(--bg);color:var(--fg)}
+.btns{display:flex;gap:10px}
+button{flex:1;min-height:64px;font-size:1.2rem;font-weight:700;border:0;border-radius:14px;color:#fff;cursor:pointer}
+button:disabled{opacity:.4}
+#start{background:var(--accent)}#stop{background:var(--stop)}#reset{background:var(--reset)}
+</style>
+</head>
+<body>
+<main>
+<h1>タイマー</h1>
+<section class="card" id="panel">
+<div id="display" aria-live="off">05:00</div>
+<div id="msg" role="status"></div>
+</section>
+<section class="card inputs">
+<label>分<input id="min" type="number" inputmode="numeric" min="0" max="999" value="5"></label>
+<label>秒<input id="sec" type="number" inputmode="numeric" min="0" max="59" value="0"></label>
+</section>
+<div class="btns">
+<button id="start">開始</button>
+<button id="stop" disabled>停止</button>
+<button id="reset">リセット</button>
+</div>
+</main>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var disp=$('display'),msg=$('msg'),panel=$('panel');
+  var minI=$('min'),secI=$('sec'),bStart=$('start'),bStop=$('stop'),bReset=$('reset');
+  var remaining=0,endAt=0,tid=null,running=false,audioCtx=null;
+
+  function fmt(ms){
+    var s=Math.ceil(ms/1000),m=Math.floor(s/60);s=s%60;
+    return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  }
+  function inputMs(){
+    var m=Math.max(0,Math.floor(Number(minI.value))||0);
+    var s=Math.max(0,Math.floor(Number(secI.value))||0);
+    return (m*60+s)*1000;
+  }
+  function show(ms){disp.textContent=fmt(ms)}
+  function setRunning(r){
+    running=r;bStop.disabled=!r;bStart.disabled=r;
+    minI.disabled=secI.disabled=r;
+  }
+  function beep(){
+    try{
+      if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state==='suspended')audioCtx.resume();
+      for(var i=0;i<3;i++){
+        var t=audioCtx.currentTime+i*0.4;
+        var o=audioCtx.createOscillator(),g=audioCtx.createGain();
+        o.type='sine';o.frequency.value=880;
+        g.gain.setValueAtTime(0.0001,t);
+        g.gain.exponentialRampToValueAtTime(0.5,t+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001,t+0.3);
+        o.connect(g);g.connect(audioCtx.destination);
+        o.start(t);o.stop(t+0.32);
+      }
+    }catch(e){}
+  }
+  function tick(){
+    remaining=endAt-Date.now();
+    if(remaining<=0){finish();return}
+    show(remaining);
+    tid=setTimeout(tick,Math.min(200,remaining%1000||1000));
+  }
+  function finish(){
+    clearTimeout(tid);remaining=0;show(0);setRunning(false);
+    msg.textContent='時間です';panel.classList.add('done');
+    beep();
+    try{if(navigator.vibrate)navigator.vibrate([400,200,400,200,400])}catch(e){}
+  }
+  function start(){
+    if(running)return;
+    if(remaining<=0){remaining=inputMs();if(remaining<=0)return}
+    // unlock audio on user gesture
+    try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume&&audioCtx.resume()}catch(e){}
+    msg.textContent='';panel.classList.remove('done');
+    endAt=Date.now()+remaining;
+    setRunning(true);tick();
+  }
+  function stop(){
+    if(!running)return;
+    clearTimeout(tid);
+    remaining=Math.max(0,endAt-Date.now());
+    setRunning(false);show(remaining);
+  }
+  function reset(){
+    clearTimeout(tid);setRunning(false);
+    try{if(navigator.vibrate)navigator.vibrate(0)}catch(e){}
+    remaining=0;msg.textContent='';panel.classList.remove('done');
+    show(inputMs());
+  }
+  function onInput(){
+    if(!running){remaining=0;msg.textContent='';panel.classList.remove('done');show(inputMs())}
+  }
+  minI.addEventListener('input',onInput);secI.addEventListener('input',onInput);
+  bStart.addEventListener('click',start);bStop.addEventListener('click',stop);bReset.addEventListener('click',reset);
+  document.addEventListener('visibilitychange',function(){if(running&&!document.hidden){clearTimeout(tid);tick()}});
+  show(inputMs());
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BMI計算ツール</title>
+<style>
+:root{--bg:#f4f6f8;--fg:#1c2530;--card:#fff;--accent:#1f7a5c;--err:#c0392b;--muted:#667}
+@media (prefers-color-scheme:dark){:root{--bg:#14181d;--fg:#e8edf2;--card:#1f252c;--accent:#3fb98f;--err:#ff7b6b;--muted:#9aa5b1}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.6}
+main{max-width:480px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:8px 0 16px}
+form{background:var(--card);border-radius:12px;padding:16px}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input{width:100%;font-size:1.25rem;padding:14px;border:2px solid #8884;border-radius:10px;background:transparent;color:inherit}
+input:focus{outline:none;border-color:var(--accent)}
+button{width:100%;margin-top:20px;min-height:52px;font-size:1.1rem;font-weight:700;border:0;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer}
+#msg{color:var(--err);font-weight:600;margin:12px 0 0;min-height:1.5em}
+#result{margin-top:16px;background:var(--card);border-radius:12px;padding:16px;text-align:center;display:none}
+#bmi{font-size:2.6rem;font-weight:800;color:var(--accent)}
+#cls{font-size:1.2rem;font-weight:700}
+small{color:var(--muted);display:block;margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>BMI計算ツール</h1>
+<form id="f" novalidate>
+<label for="h">身長 (cm)</label>
+<input id="h" inputmode="decimal" autocomplete="off" placeholder="例: 170">
+<label for="w">体重 (kg)</label>
+<input id="w" inputmode="decimal" autocomplete="off" placeholder="例: 65">
+<button type="submit">計算する</button>
+<p id="msg" role="alert"></p>
+</form>
+<section id="result" aria-live="polite">
+<div>あなたのBMI</div>
+<div id="bmi"></div>
+<div id="cls"></div>
+<small>判定は日本肥満学会の基準によります。</small>
+</section>
+</main>
+<script>
+function calcBmi(hCm,wKg){return wKg/Math.pow(hCm/100,2)}
+function judge(b){
+  if(b<18.5)return "低体重";
+  if(b<25)return "普通体重";
+  if(b<30)return "肥満1度";
+  if(b<35)return "肥満2度";
+  if(b<40)return "肥満3度";
+  return "肥満4度";
+}
+function parseNum(s){
+  s=String(s).trim().replace(/[０-９．]/g,function(c){return c==="．"?".":String.fromCharCode(c.charCodeAt(0)-0xFEE0)}).replace(",",".");
+  if(!/^\d+(\.\d+)?$/.test(s))return NaN;
+  return parseFloat(s);
+}
+if(typeof document!=="undefined"){
+  var f=document.getElementById("f");
+  f.addEventListener("submit",function(e){
+    e.preventDefault();
+    var h=parseNum(document.getElementById("h").value),
+        w=parseNum(document.getElementById("w").value),
+        msg=document.getElementById("msg"),res=document.getElementById("result");
+    msg.textContent="";res.style.display="none";
+    if(!(h>=50&&h<=250)){msg.textContent="身長は50〜250cmの数値で入力してください。";return}
+    if(!(w>=10&&w<=400)){msg.textContent="体重は10〜400kgの数値で入力してください。";return}
+    var b=calcBmi(h,w);
+    document.getElementById("bmi").textContent=b.toFixed(1);
+    document.getElementById("cls").textContent=judge(b);
+    res.style.display="block";
+  });
+}
+if(typeof module!=="undefined")module.exports={calcBmi:calcBmi,judge:judge,parseNum:parseNum};
+</script>
+</body>
+</html>
