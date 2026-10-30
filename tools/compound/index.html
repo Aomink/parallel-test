@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>積立 複利計算ツール</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --text: #1d2733;
+    --muted: #5f6b7a;
+    --border: #d5dbe3;
+    --accent: #0a7d5a;
+    --accent-soft: #e3f4ee;
+    --gain: #0a7d5a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171d;
+      --card: #1c232c;
+      --text: #e8edf2;
+      --muted: #9aa7b6;
+      --border: #333d4a;
+      --accent: #3ccf9b;
+      --accent-soft: #17302a;
+      --gain: #3ccf9b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+  h1 { font-size: 1.25rem; margin: 8px 0 16px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+  .input-wrap { display: flex; align-items: center; gap: 8px; }
+  input {
+    flex: 1;
+    min-width: 0;
+    font-size: 1.125rem; /* 16px以上: iOSの自動ズーム防止 */
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    text-align: right;
+  }
+  input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .unit { width: 2.5em; color: var(--muted); }
+  .error { color: #d33; font-size: 0.85rem; min-height: 1.2em; margin: 4px 0 0; }
+  .result-main { background: var(--accent-soft); border-color: var(--accent); }
+  .result-label { font-size: 0.9rem; color: var(--muted); margin: 0; }
+  .result-value { font-size: 1.75rem; font-weight: 700; margin: 0; word-break: break-all; }
+  .result-main .result-value { font-size: 2rem; color: var(--accent); }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .row + .row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .row .result-value { font-size: 1.25rem; }
+  .gain { color: var(--gain); }
+  .note { font-size: 0.8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>積立 複利計算ツール</h1>
+
+  <section class="card" aria-label="入力">
+    <div class="field">
+      <label for="monthly">毎月の積立額</label>
+      <div class="input-wrap">
+        <input id="monthly" type="number" inputmode="decimal" min="0" step="1000" value="30000">
+        <span class="unit">円</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for="rate">年利</label>
+      <div class="input-wrap">
+        <input id="rate" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="5">
+        <span class="unit">%</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for="years">積立年数</label>
+      <div class="input-wrap">
+        <input id="years" type="number" inputmode="numeric" min="1" max="100" step="1" value="20">
+        <span class="unit">年</span>
+      </div>
+    </div>
+    <p class="error" id="error" role="alert"></p>
+  </section>
+
+  <section class="card result-main" aria-live="polite">
+    <p class="result-label">最終金額</p>
+    <p class="result-value" id="total">-</p>
+  </section>
+
+  <section class="card" aria-live="polite">
+    <div class="row">
+      <p class="result-label">元本</p>
+      <p class="result-value" id="principal">-</p>
+    </div>
+    <div class="row">
+      <p class="result-label">運用益</p>
+      <p class="result-value gain" id="gain">-</p>
+    </div>
+  </section>
+
+  <p class="note">
+    毎月末に積立、月利＝年利÷12 の月次複利で計算しています。税金・手数料は考慮していません。
+    結果は将来の成果を保証するものではありません。
+  </p>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var yen = function (n) { return Math.round(n).toLocaleString("ja-JP") + "円"; };
+
+  function calc(monthly, annualRate, years) {
+    var r = annualRate / 100 / 12;
+    var balance = 0;
+    for (var m = 0; m < years * 12; m++) {
+      balance = balance * (1 + r) + monthly;
+    }
+    var principal = monthly * 12 * years;
+    return { total: balance, principal: principal, gain: balance - principal };
+  }
+
+  function validate(monthly, rate, years) {
+    if (!isFinite(monthly) || monthly < 0) return "積立額は0以上の数値を入力してください。";
+    if (!isFinite(rate) || rate < 0 || rate > 100) return "年利は0〜100%の範囲で入力してください。";
+    if (!isFinite(years) || years < 1 || years > 100 || Math.floor(years) !== years) {
+      return "年数は1〜100の整数で入力してください。";
+    }
+    return "";
+  }
+
+  function update() {
+    var monthly = parseFloat($("monthly").value);
+    var rate = parseFloat($("rate").value);
+    var years = parseFloat($("years").value);
+    var err = validate(monthly, rate, years);
+    $("error").textContent = err;
+    if (err) {
+      ["total", "principal", "gain"].forEach(function (id) { $(id).textContent = "-"; });
+      return;
+    }
+    var res = calc(monthly, rate, years);
+    $("total").textContent = yen(res.total);
+    $("principal").textContent = yen(res.principal);
+    $("gain").textContent = yen(res.gain);
+  }
+
+  ["monthly", "rate", "years"].forEach(function (id) {
+    $(id).addEventListener("input", update);
+  });
+  update();
+})();
+</script>
+</body>
+</html>
