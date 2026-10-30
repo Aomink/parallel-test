@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>単位変換ツール</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1c1e21;
+    --sub: #65676b;
+    --line: #d8dbe0;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121417;
+      --card: #1e2126;
+      --text: #e8eaed;
+      --sub: #9aa0a6;
+      --line: #343840;
+      --accent: #60a5fa;
+      --accent-text: #0b1220;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 480px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 8px 0 16px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; min-height: 44px; font-size: 16px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--text); cursor: pointer;
+  }
+  .tab[aria-selected="true"] {
+    background: var(--accent); color: var(--accent-text);
+    border-color: var(--accent); font-weight: 700;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+  }
+  label { display: block; font-size: 14px; color: var(--sub); margin-bottom: 4px; }
+  input, select {
+    width: 100%; min-height: 44px; font-size: 16px; padding: 8px 12px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text);
+  }
+  .row { margin-bottom: 12px; }
+  .swap {
+    display: block; width: 100%; min-height: 44px; font-size: 16px;
+    margin-bottom: 12px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--card); color: var(--text); cursor: pointer;
+  }
+  .result { font-size: 28px; font-weight: 700; word-break: break-all; margin-top: 4px; }
+  .result small { font-size: 16px; font-weight: 400; color: var(--sub); }
+  h2 { font-size: 14px; color: var(--sub); margin: 0 0 8px; font-weight: 600; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li span:last-child { word-break: break-all; text-align: right; }
+</style>
+</head>
+<body>
+<main>
+  <h1>単位変換ツール</h1>
+
+  <div class="tabs" role="tablist" id="tabs"></div>
+
+  <div class="card">
+    <div class="row">
+      <label for="value">変換する数値</label>
+      <input id="value" type="text" inputmode="decimal" autocomplete="off" value="1" placeholder="例: 12.5">
+    </div>
+    <div class="row">
+      <label for="from">変換元の単位</label>
+      <select id="from"></select>
+    </div>
+    <button class="swap" id="swap" type="button">⇅ 入れ替え</button>
+    <div class="row">
+      <label for="to">変換先の単位</label>
+      <select id="to"></select>
+    </div>
+    <label>結果</label>
+    <div class="result" id="result" aria-live="polite">—</div>
+  </div>
+
+  <div class="card">
+    <h2>すべての単位に換算</h2>
+    <ul id="all"></ul>
+  </div>
+</main>
+
+<script>
+(function () {
+  // 長さは m、重さは kg を基準に係数で換算する。温度は式で換算する。
+  var CATEGORIES = {
+    length: {
+      label: "長さ",
+      units: { m: ["m", 1], km: ["km", 1000], mile: ["mile", 1609.344], ft: ["ft", 0.3048] },
+      defaults: ["km", "mile"]
+    },
+    weight: {
+      label: "重さ",
+      units: { kg: ["kg", 1], g: ["g", 0.001], lb: ["lb", 0.45359237] },
+      defaults: ["kg", "lb"]
+    },
+    temp: {
+      label: "温度",
+      units: { c: ["℃"], f: ["℉"] },
+      defaults: ["c", "f"]
+    }
+  };
+
+  var current = "length";
+  var tabsEl = document.getElementById("tabs");
+  var valueEl = document.getElementById("value");
+  var fromEl = document.getElementById("from");
+  var toEl = document.getElementById("to");
+  var resultEl = document.getElementById("result");
+  var allEl = document.getElementById("all");
+
+  function convert(cat, v, from, to) {
+    if (cat === "temp") {
+      var c = from === "c" ? v : (v - 32) * 5 / 9;
+      return to === "c" ? c : c * 9 / 5 + 32;
+    }
+    var u = CATEGORIES[cat].units;
+    return v * u[from][1] / u[to][1];
+  }
+
+  function format(n) {
+    if (!isFinite(n)) return "—";
+    if (n === 0) return "0";
+    var abs = Math.abs(n);
+    if (abs >= 1e12 || abs < 1e-6) return n.toExponential(6).replace(/\.?0+e/, "e");
+    // 有効数字10桁で丸めて浮動小数点の誤差を消す
+    var s = String(parseFloat(n.toPrecision(10)));
+    var parts = s.split(".");
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return parts.join(".");
+  }
+
+  function parseInput(text) {
+    var t = text.trim().replace(/[０-９．－]/g, function (ch) {
+      return ch === "．" ? "." : ch === "－" ? "-" : String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+    }).replace(/,/g, "");
+    if (!/^-?(\d+\.?\d*|\.\d+)$/.test(t)) return NaN;
+    return parseFloat(t);
+  }
+
+  function fillSelect(sel, cat, selected) {
+    sel.innerHTML = "";
+    Object.keys(CATEGORIES[cat].units).forEach(function (k) {
+      var o = document.createElement("option");
+      o.value = k;
+      o.textContent = CATEGORIES[cat].units[k][0];
+      sel.appendChild(o);
+    });
+    sel.value = selected;
+  }
+
+  function update() {
+    var v = parseInput(valueEl.value);
+    var units = CATEGORIES[current].units;
+    allEl.innerHTML = "";
+    if (isNaN(v)) {
+      resultEl.textContent = "—";
+      return;
+    }
+    var out = format(convert(current, v, fromEl.value, toEl.value));
+    resultEl.innerHTML = "";
+    resultEl.appendChild(document.createTextNode(out + " "));
+    var small = document.createElement("small");
+    small.textContent = units[toEl.value][0];
+    resultEl.appendChild(small);
+
+    Object.keys(units).forEach(function (k) {
+      var li = document.createElement("li");
+      var a = document.createElement("span");
+      var b = document.createElement("span");
+      a.textContent = units[k][0];
+      b.textContent = format(convert(current, v, fromEl.value, k));
+      li.appendChild(a);
+      li.appendChild(b);
+      allEl.appendChild(li);
+    });
+  }
+
+  function setCategory(cat) {
+    current = cat;
+    Array.prototype.forEach.call(tabsEl.children, function (b) {
+      b.setAttribute("aria-selected", String(b.dataset.cat === cat));
+    });
+    fillSelect(fromEl, cat, CATEGORIES[cat].defaults[0]);
+    fillSelect(toEl, cat, CATEGORIES[cat].defaults[1]);
+    update();
+  }
+
+  Object.keys(CATEGORIES).forEach(function (k) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "tab";
+    b.setAttribute("role", "tab");
+    b.dataset.cat = k;
+    b.textContent = CATEGORIES[k].label;
+    b.addEventListener("click", function () { setCategory(k); });
+    tabsEl.appendChild(b);
+  });
+
+  valueEl.addEventListener("input", update);
+  fromEl.addEventListener("change", update);
+  toEl.addEventListener("change", update);
+  document.getElementById("swap").addEventListener("click", function () {
+    var f = fromEl.value;
+    fromEl.value = toEl.value;
+    toEl.value = f;
+    update();
+  });
+
+  setCategory("length");
+})();
+</script>
+</body>
+</html>
